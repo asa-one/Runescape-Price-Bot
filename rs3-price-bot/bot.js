@@ -1,98 +1,83 @@
-import { SimplePool, getPublicKey, getEventHash, signEvent } from 'nostr-tools'
-import axios from 'axios'
+import { SimplePool, getPublicKey, getEventHash, signEvent } from 'nostr-tools';
+import axios from 'axios';
 
 /* ================= CONFIG ================= */
 
-const relays = ['wss://relay.damus.io']
-const sk = process.env.BOT_PRIVATE_KEY
-const pk = getPublicKey(sk)
-@@ -12,47 +14,144 @@ const cache = new Map()
-const COOLDOWN_MS = 5000
-const CACHE_TTL = 60_000 // 1 minute
+const relays = ['wss://relay.damus.io'];
+const sk = process.env.BOT_PRIVATE_KEY;
+const pk = getPublicKey(sk);
+const pool = new SimplePool();
+const cooldown = new Map();
+const cache = new Map();
 
-function formatNumber(num) { return Number(num).toLocaleString('en-US') }
-function getTrendEmoji(change) { if(change>0)return'🟢';if(change<0)return'🔴';return'⚪' }
-function formatDateTime(timestamp) { const date=new Date(timestamp);const y=date.getFullYear();const m=String(date.getMonth()+1).padStart(2,'0');const d=String(date.getDate()).padStart(2,'0');const h=String(date.getHours()).padStart(2,'0');const min=String(date.getMinutes()).padStart(2,'0');return `${y}-${m}-${d} ${h}:${min}` }
+const COOLDOWN_MS = 5000;
+const CACHE_TTL = 60_000; // 1 minute
 
-async function searchItem(query){const {data}=await axios.get(`https://api.geprice.com/search?query=${encodeURIComponent(query)}`);if(!data.items?.length)return null;return data.items[0]}
-async function fetchHistory(id){const {data}=await axios.get(`https://api.geprice.com/rs3/history/${id}`);return data[id]}
-
-async function getPriceData(query){
-    if(cache.has(query)){const entry=cache.get(query);if(Date.now()-entry.timestamp<CACHE_TTL)return entry.data}
-    const item=await searchItem(query);if(!item)return null
-    const history=await fetchHistory(item.id);if(!history?.length)return null
-    const latest=history.at(-1)
-    const oneDayAgo=history.find(h=>latest.timestamp-h.timestamp>=86400000)||history.at(-2)
-    const change24h=latest.price-oneDayAgo.price
-    const latestFive=history.slice(-5).reverse()
-    const result={name:item.name,current:latest.price,change24h,latestFive}
-    cache.set(query,{data:result,timestamp:Date.now()})
-    return result
 /* ================= UTIL ================= */
 
 function formatNumber(num) {
-  return Number(num).toLocaleString('en-US')
+  return Number(num).toLocaleString('en-US');
 }
 
 function getTrendEmoji(change) {
-  if (change > 0) return "🟢"
-  if (change < 0) return "🔴"
-  return "⚪"
+  if (change > 0) return "🟢";
+  if (change < 0) return "🔴";
+  return "⚪";
 }
 
 function formatDateTime(timestamp) {
-  const date = new Date(timestamp)
-  const y = date.getFullYear()
-  const m = String(date.getMonth() + 1).padStart(2, '0')
-  const d = String(date.getDate()).padStart(2, '0')
-  const h = String(date.getHours()).padStart(2, '0')
-  const min = String(date.getMinutes()).padStart(2, '0')
-  return `${y}-${m}-${d} ${h}:${min}`
+  const date = new Date(timestamp);
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  const h = String(date.getHours()).padStart(2, '0');
+  const min = String(date.getMinutes()).padStart(2, '0');
+  return `${y}-${m}-${d} ${h}:${min}`;
 }
 
 /* ================= API ================= */
 
 async function searchItem(query) {
-  const { data } = await axios.get(
-    `https://api.geprice.com/search?query=${encodeURIComponent(query)}`
-  )
-  if (!data.items?.length) return null
-  return data.items[0]
+  const { data } = await axios.get(`https://api.geprice.com/search?query=${encodeURIComponent(query)}`);
+  if (!data.items?.length) return null;
+  return data.items[0];
+}
+
+async function fetchHistory(id) {
+  const { data } = await axios.get(`https://api.geprice.com/rs3/history/${id}`);
+  return data[id];
 }
 
 /* ================= LOGIC ================= */
 
 async function getPriceData(query) {
   if (cache.has(query)) {
-    const entry = cache.get(query)
+    const entry = cache.get(query);
     if (Date.now() - entry.timestamp < CACHE_TTL) {
-      return entry.data
+      return entry.data;
     }
   }
 
-  const item = await searchItem(query)
-  if (!item) return null
+  const item = await searchItem(query);
+  if (!item) return null;
 
-  const history = await fetchHistory(item.id)
-  if (!history?.length) return null
+  const history = await fetchHistory(item.id);
+  if (!history?.length) return null;
 
-  const latest = history.at(-1)
-  const oneDayAgo = history.find(h =>
-    latest.timestamp - h.timestamp >= 86400000
-  ) || history.at(-2)
-
-  const change24h = latest.price - oneDayAgo.price
-  const latestFive = history.slice(-5).reverse()
+  const latest = history.at(-1);
+  const oneDayAgo = history.find(h => latest.timestamp - h.timestamp >= 86400000) || history.at(-2);
+  const change24h = latest.price - oneDayAgo.price;
+  const latestFive = history.slice(-5).reverse();
 
   const result = {
     name: item.name,
     current: latest.price,
     change24h,
     latestFive
-  }
+  };
 
-  cache.set(query, { data: result, timestamp: Date.now() })
-  return result
+  cache.set(query, { data: result, timestamp: Date.now() });
+  return result;
 }
 
 /* ================= BOT ================= */
@@ -100,25 +85,17 @@ async function getPriceData(query) {
 const filters = [{ kinds: [1] }];
 
 relays.forEach((relayUrl) => {
-  // Subscribe to each relay individually
   const sub = pool.sub(relayUrl, filters);
 
-  // Listen for incoming events
   sub.on('event', async (event) => {
     try {
       const content = event.content.trim();
       if (!content.startsWith("/price ")) return;
 
       const user = event.pubkey;
-
-      // Cooldown check
-      if (cooldown.has(user)) {
-        const last = cooldown.get(user);
-        if (Date.now() - last < COOLDOWN_MS) return;
-      }
+      if (cooldown.has(user) && Date.now() - cooldown.get(user) < COOLDOWN_MS) return;
       cooldown.set(user, Date.now());
 
-      // Extract query
       const query = content.replace("/price ", "").trim();
       if (!query || query.length > 60) return;
 
@@ -145,7 +122,6 @@ ${tradesText}`;
     }
   });
 
-  // Optionally handle subscription errors
   sub.on('error', (err) => {
     console.error(`Error on relay ${relayUrl}:`, err);
   });
@@ -163,10 +139,14 @@ async function reply(event, content) {
     ],
     content,
     pubkey: pk
+  };
+
+  replyEvent.id = getEventHash(replyEvent);
+  replyEvent.sig = await signEvent(replyEvent, sk);
+
+  try {
+    pool.publish(relays, replyEvent);
+  } catch (err) {
+    console.error("Failed to publish reply:", err);
   }
-
-  replyEvent.id = getEventHash(replyEvent)
-  replyEvent.sig = await signEvent(replyEvent, sk)
-
-  pool.publish(relays, replyEvent)
 }
