@@ -90,9 +90,25 @@ async function getPriceData(query) {
 
 /* ================= BOT ================= */
 
-pool.subscribeMany(
-  relays,
-  [{ kinds: [1] }],
+// relays is an array of relay URLs, e.g. ["wss://relay1.com", "wss://relay2.com"]
+// filters is an array of Nostr filters, e.g. [{ kinds: [1] }]
+const filters = [{ kinds: [1] }];
+
+relays.forEach((relayUrl) => {
+    // Subscribe to each relay individually
+    const sub = pool.sub(relayUrl, filters);
+
+    // Listen for incoming events
+    sub.on('event', (event) => {
+        console.log(`Received event from ${relayUrl}:`, event);
+        // Your event handling logic here
+    });
+
+    // Optionally handle subscription errors
+    sub.on('error', (err) => {
+        console.error(`Error on relay ${relayUrl}:`, err);
+    });
+});,
   {
     async onevent(event) {
 
