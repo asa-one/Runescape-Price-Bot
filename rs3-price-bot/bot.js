@@ -38,7 +38,9 @@ function formatDateTime(timestamp) {
 /* ================= API ================= */
 
 async function searchItem(query) {
-  const { data } = await axios.get(`https://api.geprice.com/search?query=${encodeURIComponent(query)}`);
+  const { data } = await axios.get(
+    `https://api.geprice.com/search?query=${encodeURIComponent(query)}`
+  );
   if (!data.items?.length) return null;
   return data.items[0];
 }
@@ -85,7 +87,8 @@ async function getPriceData(query) {
 const filters = [{ kinds: [1] }];
 
 relays.forEach((relayUrl) => {
-  const sub = pool.sub(relayUrl, filters);
+  // Subscribe to each relay individually
+  const sub = pool.sub([relayUrl], filters); // ✅ must be an array
 
   sub.on('event', async (event) => {
     try {
@@ -93,9 +96,19 @@ relays.forEach((relayUrl) => {
       if (!content.startsWith("/price ")) return;
 
       const user = event.pubkey;
-      if (cooldown.has(user) && Date.now() - cooldown.get(user) < COOLDOWN_MS) return;
+
+      // Cooldown check
+      if (cooldown.has(user)) {
+        const last = cooldown.get(user);
+        const elapsed = Date.now() - last;
+        if (elapsed < COOLDOWN_MS) {
+          console.log(`Cooldown: Ignoring ${user} for ${COOLDOWN_MS - elapsed}ms`);
+          return;
+        }
+      }
       cooldown.set(user, Date.now());
 
+      // Extract query
       const query = content.replace("/price ", "").trim();
       if (!query || query.length > 60) return;
 
