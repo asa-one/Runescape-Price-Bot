@@ -1,5 +1,6 @@
 import { SimplePool, getPublicKey, getEventHash, signEvent } from 'nostr-tools';
 import axios from 'axios';
+import http from 'http'; // ✅ built-in, no extra dependency
 
 /* ================= CONFIG ================= */
 
@@ -87,8 +88,7 @@ async function getPriceData(query) {
 const filters = [{ kinds: [1] }];
 
 relays.forEach((relayUrl) => {
-  // Subscribe to each relay individually
-  const sub = pool.sub([relayUrl], filters); // ✅ must be an array
+  const sub = pool.sub([relayUrl], filters);
 
   sub.on('event', async (event) => {
     try {
@@ -97,7 +97,6 @@ relays.forEach((relayUrl) => {
 
       const user = event.pubkey;
 
-      // Cooldown check
       if (cooldown.has(user)) {
         const last = cooldown.get(user);
         const elapsed = Date.now() - last;
@@ -108,7 +107,6 @@ relays.forEach((relayUrl) => {
       }
       cooldown.set(user, Date.now());
 
-      // Extract query
       const query = content.replace("/price ", "").trim();
       if (!query || query.length > 60) return;
 
@@ -163,3 +161,15 @@ async function reply(event, content) {
     console.error("Failed to publish reply:", err);
   }
 }
+
+/* ================= DUMMY HTTP SERVER ================= */
+
+// This exists solely so Render sees a port
+const server = http.createServer((req, res) => {
+  res.end("OK");
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(`Dummy server running on port ${PORT} (Render happy)`);
+});
