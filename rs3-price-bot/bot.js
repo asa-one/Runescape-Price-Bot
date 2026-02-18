@@ -1,4 +1,3 @@
-import { SimplePool, finalizeEvent, getPublicKey } from 'nostr-tools'
 import { SimplePool, getPublicKey, getEventHash, signEvent } from 'nostr-tools'
 import axios from 'axios'
 
@@ -61,24 +60,6 @@ async function searchItem(query) {
   return data.items[0]
 }
 
-pool.subscribeMany(relays,[{kinds:[1]}],{async onevent(event){
-    const content=event.content.trim()
-    if(!content.startsWith("/price "))return
-    const user=event.pubkey
-    if(cooldown.has(user)){const last=cooldown.get(user);if(Date.now()-last<COOLDOWN_MS)return}
-    cooldown.set(user,Date.now())
-    const query=content.replace("/price ","").trim();if(!query||query.length>60)return
-    try{
-        const data=await getPriceData(query);if(!data)return reply(event,"Item not found.")
-        let tradesText=data.latestFive.map((t,i)=>`${i+1}) ${formatNumber(t.price)} gp | ${formatDateTime(t.timestamp)}`).join("\n")
-        const replyText=`📦 ${data.name}
-async function fetchHistory(id) {
-  const { data } = await axios.get(
-    `https://api.geprice.com/rs3/history/${id}`
-  )
-  return data[id]
-}
-
 /* ================= LOGIC ================= */
 
 async function getPriceData(query) {
@@ -116,58 +97,59 @@ async function getPriceData(query) {
 
 /* ================= BOT ================= */
 
-pool.subscribeMany(
-  relays,
-  [{ kinds: [1] }],
-  {
-    async onevent(event) {
+const filters = [{ kinds: [1] }];
 
-      const content = event.content.trim()
-      if (!content.startsWith("/price ")) return
+relays.forEach((relayUrl) => {
+  // Subscribe to each relay individually
+  const sub = pool.sub(relayUrl, filters);
 
-      const user = event.pubkey
+  // Listen for incoming events
+  sub.on('event', async (event) => {
+    try {
+      const content = event.content.trim();
+      if (!content.startsWith("/price ")) return;
 
+      const user = event.pubkey;
+
+      // Cooldown check
       if (cooldown.has(user)) {
-        const last = cooldown.get(user)
-        if (Date.now() - last < COOLDOWN_MS) return
+        const last = cooldown.get(user);
+        if (Date.now() - last < COOLDOWN_MS) return;
       }
-      cooldown.set(user, Date.now())
+      cooldown.set(user, Date.now());
 
-      const query = content.replace("/price ", "").trim()
-      if (!query || query.length > 60) return
+      // Extract query
+      const query = content.replace("/price ", "").trim();
+      if (!query || query.length > 60) return;
 
-      try {
-        const data = await getPriceData(query)
-        if (!data) return await reply(event, "Item not found.")
+      const data = await getPriceData(query);
+      if (!data) return await reply(event, "Item not found.");
 
-        let tradesText = data.latestFive.map((t, i) =>
-          `${i + 1}) ${formatNumber(t.price)} gp | ${formatDateTime(t.timestamp)}`
-        ).join("\n")
+      const tradesText = data.latestFive
+        .map((t, i) => `${i + 1}) ${formatNumber(t.price)} gp | ${formatDateTime(t.timestamp)}`)
+        .join("\n");
 
-        const replyText =
+      const replyText =
 `📦 ${data.name}
 💰 Current: ${formatNumber(data.current)} gp
-📈 24h: ${data.change24h>=0?"+":""}${formatNumber(data.change24h)} gp ${getTrendEmoji(data.change24h)}
 📈 24h: ${data.change24h >= 0 ? "+" : ""}${formatNumber(data.change24h)} gp ${getTrendEmoji(data.change24h)}
 
 Latest Trades:
-${tradesText}`
-        reply(event,replyText)
-    }catch(err){reply(event,"Error fetching price data.")}
-}})
+${tradesText}`;
 
-function reply(event,content){
-    const replyEvent=finalizeEvent({kind:1,created_at:Math.floor(Date.now()/1000),tags:[['e',event.id],['p',event.pubkey]],content},sk)
-    pool.publish(relays,replyEvent)
-        await reply(event, replyText)
+      await reply(event, replyText);
 
-      } catch (err) {
-        console.error(err)
-        await reply(event, "Error fetching price data.")
-      }
+    } catch (err) {
+      console.error(err);
+      await reply(event, "Error fetching price data.");
     }
-  }
-)
+  });
+
+  // Optionally handle subscription errors
+  sub.on('error', (err) => {
+    console.error(`Error on relay ${relayUrl}:`, err);
+  });
+});
 
 /* ================= REPLY FUNCTION ================= */
 
